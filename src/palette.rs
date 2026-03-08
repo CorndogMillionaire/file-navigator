@@ -95,6 +95,35 @@ impl Palette {
     }
 }
 
+/// Create a dimmed version of a palette for side segments.
+/// Multiplier < 1.0 darkens, > 1.0 brightens.
+impl Palette {
+    pub fn dimmed(&self, factor: f32) -> Palette {
+        Palette {
+            bg: self.bg,
+            surface: self.surface,
+            text_dim: dim_color(self.text_dim, factor),
+            text_mid: dim_color(self.text_mid, factor),
+            text_hot: dim_color(self.text_hot, factor),
+            border_dim: dim_color(self.border_dim, factor),
+            border_mid: dim_color(self.border_mid, factor),
+            border_hot: dim_color(self.border_hot, factor),
+            warn: self.warn,
+        }
+    }
+}
+
+fn dim_color(color: Color, factor: f32) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => Color::Rgb(
+            ((r as f32) * factor).min(255.0) as u8,
+            ((g as f32) * factor).min(255.0) as u8,
+            ((b as f32) * factor).min(255.0) as u8,
+        ),
+        other => other,
+    }
+}
+
 pub const PALETTE_NAMES: &[&str] = &["phosphor", "amber", "cyan", "red", "pink"];
 
 /// ASCII art corpo logos per palette theme.

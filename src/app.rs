@@ -61,6 +61,9 @@ pub struct App {
     pub last_position: Option<PathBuf>,
     pub jump_keys: Vec<(usize, (char, char))>,
     pub pending_jump_key: Option<char>,
+    // Jump keys for side segments: (entry_index_in_segment, key_pair)
+    pub parent_jump_keys: Vec<(usize, (char, char))>,
+    pub child_jump_keys: Vec<(usize, (char, char))>,
     pub viewport_height: usize,
     // Deep fuzzy: entries from multiple depths
     pub fuzzy_pool: Vec<FsEntry>,
@@ -76,6 +79,12 @@ pub struct App {
     // Saved state for cancel
     theme_picker_prev_palette: usize,
     theme_picker_prev_symbols: usize,
+    // Cursor memory: directory -> last highlighted entry name
+    pub cursor_memory: HashMap<PathBuf, String>,
+    // Miller segments: parent and child preview entries
+    pub parent_entries: Vec<FsEntry>,
+    pub parent_highlight: Option<usize>,
+    pub child_preview: Vec<FsEntry>,
 }
 
 const JUMP_KEYS: &[(char, char)] = &[
@@ -128,6 +137,8 @@ impl App {
             last_position: None,
             jump_keys: Vec::new(),
             pending_jump_key: None,
+            parent_jump_keys: Vec::new(),
+            child_jump_keys: Vec::new(),
             viewport_height: 0,
             fuzzy_pool: Vec::new(),
             fuzzy_filtered: Vec::new(),
@@ -139,8 +150,13 @@ impl App {
             theme_picker_symbol_cursor: symbols_index,
             theme_picker_prev_palette: palette_index,
             theme_picker_prev_symbols: symbols_index,
+            cursor_memory: HashMap::new(),
+            parent_entries: Vec::new(),
+            parent_highlight: None,
+            child_preview: Vec::new(),
         };
         app.refresh_entries();
+        app.refresh_segments();
         app
     }
 
@@ -170,12 +186,41 @@ impl App {
         }
     }
 
+    /// Save current cursor position to memory before navigating away
+    fn save_cursor_position(&mut self) {
+        if let Some(entry) = self.current_entry() {
+            let name = entry.path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| entry.name.clone());
+            self.cursor_memory.insert(self.current_dir.clone(), name);
+        }
+    }
+
+    /// Restore cursor to remembered position for the current directory
+    fn restore_cursor_position(&mut self) {
+        if let Some(remembered) = self.cursor_memory.get(&self.current_dir) {
+            for (i, entry) in self.entries.iter().enumerate() {
+                let entry_name = entry.path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| entry.name.clone());
+                if entry_name == *remembered {
+                    self.cursor = i;
+                    self.ensure_cursor_visible();
+                    return;
+                }
+            }
+        }
+    }
+
     pub fn navigate_to(&mut self, path: PathBuf) {
+        self.save_cursor_position();
         self.last_position = Some(self.current_dir.clone());
         self.current_dir = path.clone();
         self.cursor = 0;
         self.scroll_offset = 0;
         self.refresh_entries();
+        self.restore_cursor_position();
+        self.refresh_segments();
         self.nav_history.truncate(self.nav_history_cursor + 1);
         self.nav_history.push(path);
         self.nav_history_cursor = self.nav_history.len() - 1;
@@ -183,6 +228,7 @@ impl App {
 
     pub fn navigate_back(&mut self) {
         if self.nav_history_cursor > 0 {
+            self.save_cursor_position();
             self.nav_history_cursor -= 1;
             let path = self.nav_history[self.nav_history_cursor].clone();
             self.last_position = Some(self.current_dir.clone());
@@ -190,11 +236,14 @@ impl App {
             self.cursor = 0;
             self.scroll_offset = 0;
             self.refresh_entries();
+            self.restore_cursor_position();
+            self.refresh_segments();
         }
     }
 
     pub fn navigate_forward(&mut self) {
         if self.nav_history_cursor + 1 < self.nav_history.len() {
+            self.save_cursor_position();
             self.nav_history_cursor += 1;
             let path = self.nav_history[self.nav_history_cursor].clone();
             self.last_position = Some(self.current_dir.clone());
@@ -202,13 +251,64 @@ impl App {
             self.cursor = 0;
             self.scroll_offset = 0;
             self.refresh_entries();
+            self.restore_cursor_position();
+            self.refresh_segments();
         }
     }
 
     pub fn navigate_parent(&mut self) {
         if let Some(parent) = self.current_dir.parent() {
+            let child_name = self.current_dir.file_name()
+                .map(|n| n.to_string_lossy().to_string());
             let parent = parent.to_path_buf();
+            // Pre-seed cursor memory so we land on the dir we came from
+            if let Some(name) = child_name {
+                self.cursor_memory.insert(parent.clone(), name);
+            }
             self.navigate_to(parent);
+        }
+    }
+
+    /// Refresh parent entries and child preview for miller segments
+    pub fn refresh_segments(&mut self) {
+        // Parent entries
+        if let Some(parent) = self.current_dir.parent() {
+            match nav::read_dir(parent, self.show_hidden) {
+                Ok(entries) => {
+                    // Find which entry is our current dir
+                    let cur_name = self.current_dir.file_name()
+                        .map(|n| n.to_string_lossy().to_string());
+                    self.parent_highlight = cur_name.as_ref().and_then(|name| {
+                        entries.iter().position(|e| {
+                            e.path.file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .as_deref() == Some(name.as_str())
+                        })
+                    });
+                    self.parent_entries = entries;
+                }
+                Err(_) => {
+                    self.parent_entries.clear();
+                    self.parent_highlight = None;
+                }
+            }
+        } else {
+            self.parent_entries.clear();
+            self.parent_highlight = None;
+        }
+        // Child preview
+        self.refresh_child_preview();
+    }
+
+    /// Update child preview based on current cursor position
+    pub fn refresh_child_preview(&mut self) {
+        self.child_preview.clear();
+        if let Some(entry) = self.current_entry() {
+            if entry.is_dir {
+                if let Ok(children) = nav::read_dir(&entry.path, self.show_hidden) {
+                    self.child_preview = children;
+                }
+            }
         }
     }
 
@@ -297,11 +397,38 @@ impl App {
 
     pub fn assign_jump_keys(&mut self) {
         self.jump_keys.clear();
+        self.parent_jump_keys.clear();
+        self.child_jump_keys.clear();
         self.pending_jump_key = None;
+
+        let mut key_idx = 0;
+
+        // Center panel gets priority (homerow-first keys)
         let visible = self.visible_indices_in_viewport();
-        for (key_idx, &entry_idx) in visible.iter().enumerate() {
+        for &entry_idx in visible.iter() {
             if key_idx < JUMP_KEYS.len() {
                 self.jump_keys.push((entry_idx, JUMP_KEYS[key_idx]));
+                key_idx += 1;
+            }
+        }
+
+        // Parent panel gets next batch of keys (directories only)
+        for (i, entry) in self.parent_entries.iter().enumerate() {
+            if !entry.is_dir { continue; }
+            // Skip the highlighted entry (it's our current dir)
+            if Some(i) == self.parent_highlight { continue; }
+            if key_idx < JUMP_KEYS.len() {
+                self.parent_jump_keys.push((i, JUMP_KEYS[key_idx]));
+                key_idx += 1;
+            }
+        }
+
+        // Child preview panel gets remaining keys (directories only)
+        for (i, entry) in self.child_preview.iter().enumerate() {
+            if !entry.is_dir { continue; }
+            if key_idx < JUMP_KEYS.len() {
+                self.child_jump_keys.push((i, JUMP_KEYS[key_idx]));
+                key_idx += 1;
             }
         }
     }
@@ -449,30 +576,35 @@ impl App {
                 if self.cursor + 1 < self.filtered_indices.len() {
                     self.cursor += 1;
                     self.ensure_cursor_visible();
+                    self.refresh_child_preview();
                 }
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
                 if self.cursor > 0 {
                     self.cursor -= 1;
                     self.ensure_cursor_visible();
+                    self.refresh_child_preview();
                 }
             }
             (KeyCode::Char('G'), KeyModifiers::SHIFT) | (KeyCode::Char('G'), _) => {
                 if !self.filtered_indices.is_empty() {
                     self.cursor = self.filtered_indices.len() - 1;
                     self.ensure_cursor_visible();
+                    self.refresh_child_preview();
                 }
             }
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 let half = self.viewport_height / 2;
                 self.cursor = self.cursor.saturating_sub(half);
                 self.ensure_cursor_visible();
+                self.refresh_child_preview();
             }
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                 let half = self.viewport_height / 2;
                 self.cursor =
                     (self.cursor + half).min(self.filtered_indices.len().saturating_sub(1));
                 self.ensure_cursor_visible();
+                self.refresh_child_preview();
             }
             // Navigation
             (KeyCode::Char('h') | KeyCode::Left, _)
@@ -541,6 +673,7 @@ impl App {
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 self.show_hidden = !self.show_hidden;
                 self.refresh_entries();
+                self.refresh_segments();
             }
             _ => {}
         }
@@ -608,8 +741,9 @@ impl App {
         match key.code {
             KeyCode::Char(c) if c.is_ascii_lowercase() => {
                 if let Some(first) = self.pending_jump_key.take() {
-                    // Second key of the combo
-                    if let Some(entry_idx) = self.entry_for_jump_key((first, c)) {
+                    let combo = (first, c);
+                    // Check center panel
+                    if let Some(entry_idx) = self.entry_for_jump_key(combo) {
                         if let Some(cursor_pos) =
                             self.filtered_indices.iter().position(|&i| i == entry_idx)
                         {
@@ -620,10 +754,27 @@ impl App {
                             return;
                         }
                     }
+                    // Check parent panel — jump to sibling dir
+                    if let Some((idx, _)) = self.parent_jump_keys.iter().find(|(_, k)| *k == combo) {
+                        let path = self.parent_entries[*idx].path.clone();
+                        self.mode = Mode::Normal;
+                        self.navigate_to(path);
+                        return;
+                    }
+                    // Check child preview panel — jump into child dir
+                    if let Some((idx, _)) = self.child_jump_keys.iter().find(|(_, k)| *k == combo) {
+                        let path = self.child_preview[*idx].path.clone();
+                        self.mode = Mode::Normal;
+                        self.navigate_to(path);
+                        return;
+                    }
                     self.mode = Mode::Normal;
                 } else {
-                    // First key - check if any jump key starts with this char
-                    if self.jump_keys.iter().any(|(_, (k1, _))| *k1 == c) {
+                    // First key - check if any jump key across all panels starts with this char
+                    let has_match = self.jump_keys.iter().any(|(_, (k1, _))| *k1 == c)
+                        || self.parent_jump_keys.iter().any(|(_, (k1, _))| *k1 == c)
+                        || self.child_jump_keys.iter().any(|(_, (k1, _))| *k1 == c);
+                    if has_match {
                         self.pending_jump_key = Some(c);
                     } else {
                         self.mode = Mode::Normal;
