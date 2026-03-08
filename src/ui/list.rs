@@ -66,18 +66,24 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
             spans.push(Span::styled("  ", Style::default().bg(row_bg)));
         }
 
-        // Jump key column (4 chars)
+        // Jump key column (5 chars)
         if in_jump_mode {
-            if let Some(key) = app.jump_key_for_entry(entry_idx) {
-                spans.push(Span::styled(
-                    format!("[{}] ", key),
-                    Style::default()
-                        .fg(pal.text_hot)
-                        .bg(pal.border_mid)
-                        .add_modifier(Modifier::BOLD),
-                ));
+            if let Some((k1, k2)) = app.jump_key_for_entry(entry_idx) {
+                let dimmed = app.pending_jump_key.is_some()
+                    && app.pending_jump_key != Some(k1);
+                if dimmed {
+                    spans.push(Span::styled("     ", Style::default().bg(row_bg)));
+                } else {
+                    spans.push(Span::styled(
+                        format!("[{}{}] ", k1, k2),
+                        Style::default()
+                            .fg(pal.text_hot)
+                            .bg(pal.border_mid)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
             } else {
-                spans.push(Span::styled("    ", Style::default().bg(row_bg)));
+                spans.push(Span::styled("     ", Style::default().bg(row_bg)));
             }
         }
 
@@ -130,7 +136,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
         // Calculate available name width
         let prefix_width = 2 // selection indicator
-            + if in_jump_mode { 4 } else { 0 }
+            + if in_jump_mode { 5 } else { 0 }
             + 2; // sigil/depth
         let suffix_width = if show_type { 6 } else { 0 } + if show_size { 9 } else { 0 };
         let name_width = width.saturating_sub(prefix_width + suffix_width + 1);

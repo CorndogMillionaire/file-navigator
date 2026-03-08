@@ -155,35 +155,18 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     );
 
     // Hint bar
+    let sep = Span::styled(" \u{00b7} ", Style::default().fg(pal.border_mid));
     let hint_line = Line::from(vec![
-        Span::styled(
-            " enter",
-            Style::default().fg(pal.text_mid),
-        ),
-        Span::styled(" go", Style::default().fg(pal.text_dim)),
-        Span::styled(
-            " \u{00b7} ",
-            Style::default().fg(pal.border_mid),
-        ),
-        Span::styled(
-            "\u{2191}\u{2193}",
-            Style::default().fg(pal.text_mid),
-        ),
+        Span::styled(" jk", Style::default().fg(pal.text_mid)),
         Span::styled(" nav", Style::default().fg(pal.text_dim)),
-        Span::styled(
-            " \u{00b7} ",
-            Style::default().fg(pal.border_mid),
-        ),
-        Span::styled(
-            "^d",
-            Style::default().fg(pal.text_mid),
-        ),
+        sep.clone(),
+        Span::styled("l", Style::default().fg(pal.text_mid)),
+        Span::styled(" go", Style::default().fg(pal.text_dim)),
+        sep.clone(),
+        Span::styled("^d", Style::default().fg(pal.text_mid)),
         Span::styled(" del", Style::default().fg(pal.text_dim)),
-        Span::styled(
-            " \u{00b7} ",
-            Style::default().fg(pal.border_mid),
-        ),
-        Span::styled("esc", Style::default().fg(pal.text_mid)),
+        sep.clone(),
+        Span::styled("h", Style::default().fg(pal.text_mid)),
         Span::styled(" close", Style::default().fg(pal.text_dim)),
     ]);
     f.render_widget(

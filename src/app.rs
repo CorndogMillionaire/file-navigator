@@ -46,10 +46,10 @@ pub struct App {
     pub palette_index: usize,
     pub should_quit: bool,
     pub selected_path: Option<PathBuf>,
-    pub pending_key: Option<char>,
     pub show_hidden: bool,
     pub last_position: Option<PathBuf>,
-    pub jump_keys: Vec<(usize, char)>,
+    pub jump_keys: Vec<(usize, (char, char))>,
+    pub pending_jump_key: Option<char>,
     pub viewport_height: usize,
     // Deep fuzzy: entries from multiple depths
     pub fuzzy_pool: Vec<FsEntry>,
@@ -60,7 +60,20 @@ pub struct App {
     pub bookmark_filtered: Vec<char>,
 }
 
-const JUMP_KEY_ORDER: &str = "asdfghjklqwertyuiopzxcvbnm";
+const JUMP_KEYS: &[(char, char)] = &[
+    ('f', 'f'), ('f', 'd'), ('f', 's'), ('f', 'a'), ('f', 'g'),
+    ('d', 'f'), ('d', 'd'), ('d', 's'), ('d', 'a'), ('d', 'g'),
+    ('s', 'f'), ('s', 'd'), ('s', 's'), ('s', 'a'), ('s', 'g'),
+    ('a', 'f'), ('a', 'd'), ('a', 's'), ('a', 'a'), ('a', 'g'),
+    ('f', 'r'), ('d', 'r'), ('s', 'r'), ('a', 'r'),
+    ('f', 'e'), ('d', 'e'), ('s', 'e'), ('a', 'e'),
+    ('f', 'w'), ('d', 'w'), ('s', 'w'), ('a', 'w'),
+    ('f', 'q'), ('d', 'q'), ('s', 'q'), ('a', 'q'),
+    ('f', 'v'), ('d', 'v'), ('s', 'v'), ('a', 'v'),
+    ('f', 'c'), ('d', 'c'), ('s', 'c'), ('a', 'c'),
+    ('f', 'x'), ('d', 'x'), ('s', 'x'), ('a', 'x'),
+    ('f', 'z'), ('d', 'z'), ('s', 'z'), ('a', 'z'),
+];
 
 impl App {
     pub fn new(palette: Palette, palette_index: usize, start_dir: Option<PathBuf>) -> Self {
@@ -85,10 +98,10 @@ impl App {
             palette_index,
             should_quit: false,
             selected_path: None,
-            pending_key: None,
             show_hidden: false,
             last_position: None,
             jump_keys: Vec::new(),
+            pending_jump_key: None,
             viewport_height: 0,
             fuzzy_pool: Vec::new(),
             fuzzy_filtered: Vec::new(),
@@ -253,10 +266,11 @@ impl App {
 
     pub fn assign_jump_keys(&mut self) {
         self.jump_keys.clear();
+        self.pending_jump_key = None;
         let visible = self.visible_indices_in_viewport();
         for (key_idx, &entry_idx) in visible.iter().enumerate() {
-            if let Some(ch) = JUMP_KEY_ORDER.chars().nth(key_idx) {
-                self.jump_keys.push((entry_idx, ch));
+            if key_idx < JUMP_KEYS.len() {
+                self.jump_keys.push((entry_idx, JUMP_KEYS[key_idx]));
             }
         }
     }
@@ -270,17 +284,17 @@ impl App {
         self.filtered_indices[start..end].to_vec()
     }
 
-    pub fn jump_key_for_entry(&self, entry_idx: usize) -> Option<char> {
+    pub fn jump_key_for_entry(&self, entry_idx: usize) -> Option<(char, char)> {
         self.jump_keys
             .iter()
             .find(|(idx, _)| *idx == entry_idx)
-            .map(|(_, ch)| *ch)
+            .map(|(_, k)| *k)
     }
 
-    pub fn entry_for_jump_key(&self, ch: char) -> Option<usize> {
+    pub fn entry_for_jump_key(&self, k: (char, char)) -> Option<usize> {
         self.jump_keys
             .iter()
-            .find(|(_, k)| *k == ch)
+            .find(|(_, key)| *key == k)
             .map(|(idx, _)| *idx)
     }
 
@@ -375,20 +389,6 @@ impl App {
     }
 
     fn handle_normal_key(&mut self, key: KeyEvent) {
-        // Handle pending multi-key sequences
-        if let Some(pending) = self.pending_key.take() {
-            match pending {
-                'g' => {
-                    if key.code == KeyCode::Char('g') {
-                        self.cursor = 0;
-                        self.ensure_cursor_visible();
-                    }
-                    return;
-                }
-                _ => return,
-            }
-        }
-
         match (key.code, key.modifiers) {
             (KeyCode::Char('q'), KeyModifiers::NONE) => {
                 self.should_quit = true;
@@ -408,9 +408,6 @@ impl App {
                     self.cursor -= 1;
                     self.ensure_cursor_visible();
                 }
-            }
-            (KeyCode::Char('g'), KeyModifiers::NONE) => {
-                self.pending_key = Some('g');
             }
             (KeyCode::Char('G'), KeyModifiers::SHIFT) | (KeyCode::Char('G'), _) => {
                 if !self.filtered_indices.is_empty() {
@@ -450,14 +447,17 @@ impl App {
             (KeyCode::Char('i'), KeyModifiers::CONTROL) => {
                 self.navigate_forward();
             }
-            // Select: if cursor is on a dir, emit that dir; otherwise emit current dir
+            // Stay: return PWD
             (KeyCode::Char('s'), KeyModifiers::NONE) => {
-                let path = self
-                    .current_entry()
-                    .filter(|e| e.is_dir)
-                    .map(|e| e.path.clone())
-                    .unwrap_or_else(|| self.current_dir.clone());
-                self.selected_path = Some(path);
+                self.selected_path = Some(self.current_dir.clone());
+            }
+            // Goto: return selected directory
+            (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                if let Some(entry) = self.current_entry() {
+                    if entry.is_dir {
+                        self.selected_path = Some(entry.path.clone());
+                    }
+                }
             }
             // Modes
             (KeyCode::Char('/'), KeyModifiers::NONE) => {
@@ -559,20 +559,35 @@ impl App {
     fn handle_jump_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char(c) if c.is_ascii_lowercase() => {
-                if let Some(entry_idx) = self.entry_for_jump_key(c) {
-                    if let Some(cursor_pos) =
-                        self.filtered_indices.iter().position(|&i| i == entry_idx)
-                    {
-                        self.cursor = cursor_pos;
-                        self.ensure_cursor_visible();
+                if let Some(first) = self.pending_jump_key.take() {
+                    // Second key of the combo
+                    if let Some(entry_idx) = self.entry_for_jump_key((first, c)) {
+                        if let Some(cursor_pos) =
+                            self.filtered_indices.iter().position(|&i| i == entry_idx)
+                        {
+                            self.cursor = cursor_pos;
+                            self.ensure_cursor_visible();
+                            self.mode = Mode::Normal;
+                            self.enter_selected();
+                            return;
+                        }
+                    }
+                    self.mode = Mode::Normal;
+                } else {
+                    // First key - check if any jump key starts with this char
+                    if self.jump_keys.iter().any(|(_, (k1, _))| *k1 == c) {
+                        self.pending_jump_key = Some(c);
+                    } else {
                         self.mode = Mode::Normal;
-                        self.enter_selected();
-                        return;
                     }
                 }
+            }
+            KeyCode::Esc => {
+                self.pending_jump_key = None;
                 self.mode = Mode::Normal;
             }
             _ => {
+                self.pending_jump_key = None;
                 self.mode = Mode::Normal;
             }
         }
@@ -582,6 +597,17 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
+            }
+            KeyCode::Char('h') if key.modifiers == KeyModifiers::NONE => {
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Char('l') if key.modifiers == KeyModifiers::NONE => {
+                if let Some(&mark_key) = self.bookmark_filtered.get(self.bookmark_cursor) {
+                    if let Some(path) = self.marks.get(&mark_key).cloned() {
+                        self.mode = Mode::Normal;
+                        self.navigate_to(path);
+                    }
+                }
             }
             KeyCode::Enter => {
                 if let Some(&mark_key) = self.bookmark_filtered.get(self.bookmark_cursor) {
@@ -596,9 +622,19 @@ impl App {
                 self.bookmark_cursor = 0;
                 self.update_bookmark_filter();
             }
+            KeyCode::Char('j') if key.modifiers == KeyModifiers::NONE => {
+                if self.bookmark_cursor + 1 < self.bookmark_filtered.len() {
+                    self.bookmark_cursor += 1;
+                }
+            }
             KeyCode::Down | KeyCode::Tab => {
                 if self.bookmark_cursor + 1 < self.bookmark_filtered.len() {
                     self.bookmark_cursor += 1;
+                }
+            }
+            KeyCode::Char('k') if key.modifiers == KeyModifiers::NONE => {
+                if self.bookmark_cursor > 0 {
+                    self.bookmark_cursor -= 1;
                 }
             }
             KeyCode::Up | KeyCode::BackTab => {

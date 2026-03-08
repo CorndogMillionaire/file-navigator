@@ -47,7 +47,10 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled(" fuzzy", desc_style),
                 sep.clone(),
                 Span::styled("s", key_style),
-                Span::styled(" select dir", desc_style),
+                Span::styled(" stay", desc_style),
+                sep.clone(),
+                Span::styled("g", key_style),
+                Span::styled(" goto", desc_style),
                 sep.clone(),
                 Span::styled("b", key_style),
                 Span::styled(" bookmarks", desc_style),
@@ -81,7 +84,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         Mode::JumpKey => {
             vec![
                 Span::raw(" "),
-                Span::styled("a-z", key_style),
+                Span::styled("2-key", key_style),
                 Span::styled(" jump to entry", desc_style),
                 sep.clone(),
                 Span::styled("esc", key_style),
