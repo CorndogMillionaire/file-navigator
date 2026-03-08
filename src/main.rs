@@ -3,6 +3,7 @@ mod config;
 mod marks;
 mod nav;
 mod palette;
+mod symbols;
 mod ui;
 
 use std::io;
@@ -18,6 +19,7 @@ use ratatui::backend::CrosstermBackend;
 
 use app::App;
 use palette::Palette;
+use symbols::SymbolSet;
 
 fn print_help() {
     eprintln!(
@@ -29,6 +31,7 @@ USAGE:
 
 OPTIONS:
     --palette <NAME>    Set color palette: phosphor, amber, cyan, red, pink
+    --symbols <NAME>    Set symbol set: standard, ascii, block, minimal, pipeline
     --help              Show this help message
     --shell-init        Print shell integration function
 
@@ -112,7 +115,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => 0,
     };
     let palette = Palette::from_name(&palette_name);
-    let mut app = App::new(palette, palette_index, None);
+
+    let symbol_set_name = config::load_symbol_set_name();
+    let symbols_index = match symbol_set_name.as_str() {
+        "ascii" => 1,
+        "block" => 2,
+        "minimal" => 3,
+        "pipeline" => 4,
+        _ => 0,
+    };
+    let symbols = SymbolSet::from_name(&symbol_set_name);
+    let mut app = App::new(palette, palette_index, symbols, symbols_index, None);
 
     // Main event loop
     loop {

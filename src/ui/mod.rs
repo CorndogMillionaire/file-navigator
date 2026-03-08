@@ -6,6 +6,7 @@ mod header;
 mod jumpkey;
 mod list;
 mod sidebar;
+mod theme_picker;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -67,5 +68,10 @@ pub fn render(f: &mut Frame, app: &mut App) {
     // Bookmark popup (renders on top of everything)
     if app.mode == Mode::Bookmark {
         bookmark::render(f, app, area);
+    }
+
+    // Theme picker popup
+    if app.mode == Mode::ThemePicker {
+        theme_picker::render(f, app, area);
     }
 }

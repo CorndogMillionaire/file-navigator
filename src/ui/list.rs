@@ -10,6 +10,7 @@ use crate::palette::Palette;
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let pal = &app.palette;
+    let sym = &app.symbols;
     let width = area.width as usize;
     let height = area.height as usize;
 
@@ -59,7 +60,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         // Selection indicator
         if is_cursor {
             spans.push(Span::styled(
-                "\u{25b6} ",
+                format!("{} ", sym.cursor),
                 Style::default().fg(pal.text_hot).bg(row_bg),
             ));
         } else {
@@ -90,9 +91,9 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         // Depth indicator for fuzzy results from other directories
         if in_fuzzy_mode && !app.fuzzy_query.is_empty() && entry.depth != 0 {
             let depth_badge = if entry.depth < 0 {
-                "\u{2191} " // up arrow for parent
+                format!("{} ", sym.depth_up)
             } else {
-                "\u{2193} " // down arrow for children
+                format!("{} ", sym.depth_down)
             };
             spans.push(Span::styled(
                 depth_badge,
@@ -101,9 +102,9 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         } else {
             // Sigil
             let sigil = if entry.is_dir {
-                "\u{25a3} "
+                format!("{} ", sym.dir_sigil)
             } else {
-                "\u{25fb} "
+                format!("{} ", sym.file_sigil)
             };
             spans.push(Span::styled(
                 sigil,
@@ -205,12 +206,12 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         // Size
         if show_size {
             let size_str = if entry.is_dir {
-                "\u{2014}".to_string()
+                sym.em_dash.to_string()
             } else {
                 entry
                     .size
                     .map(nav::format_size)
-                    .unwrap_or_else(|| "\u{2014}".to_string())
+                    .unwrap_or_else(|| sym.em_dash.to_string())
             };
             spans.push(Span::styled(
                 format!("{:>8} ", size_str),
@@ -236,8 +237,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     if total > height {
         let mut scrollbar_state = ScrollbarState::new(total).position(app.scroll_offset);
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .thumb_symbol("\u{2588}")
-            .track_symbol(Some("\u{2502}"))
+            .thumb_symbol(sym.scrollbar_thumb)
+            .track_symbol(Some(sym.scrollbar_track))
             .thumb_style(Style::default().fg(pal.border_mid))
             .track_style(Style::default().fg(pal.border_dim));
         f.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
@@ -254,12 +255,16 @@ fn depth_text_color(pal: &Palette, depth: i32) -> ratatui::style::Color {
 }
 
 fn truncate_str(s: &str, max_width: usize) -> String {
+    truncate_str_with(s, max_width, "\u{2026}")
+}
+
+fn truncate_str_with(s: &str, max_width: usize, ellipsis: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max_width {
         s.to_string()
-    } else if max_width > 1 {
-        chars[..max_width - 1].iter().collect::<String>() + "\u{2026}"
+    } else if max_width > ellipsis.len() {
+        chars[..max_width - ellipsis.len()].iter().collect::<String>() + ellipsis
     } else {
-        "\u{2026}".to_string()
+        ellipsis.to_string()
     }
 }

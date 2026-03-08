@@ -31,7 +31,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
     // Blinking cursor
     if app.blink_on {
-        spans.push(Span::styled(" \u{258b}", Style::default().fg(pal.text_hot)));
+        spans.push(Span::styled(format!(" {}", app.symbols.blink_char), Style::default().fg(pal.text_hot)));
     } else {
         spans.push(Span::raw("  "));
     }

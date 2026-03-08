@@ -8,6 +8,7 @@ use crate::app::App;
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let pal = &app.palette;
+    let sym = &app.symbols;
 
     // Center the popup
     let popup_width = 60.min(area.width.saturating_sub(4));
@@ -21,7 +22,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(Line::from(vec![
             Span::styled(
-                " \u{2691} ",
+                format!(" {} ", sym.bookmark_icon),
                 Style::default()
                     .fg(pal.text_hot)
                     .add_modifier(Modifier::BOLD),
@@ -52,7 +53,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         .split(inner);
 
     // Search row
-    let cursor_char = if app.blink_on { "\u{258b}" } else { " " };
+    let cursor_char = if app.blink_on { sym.blink_char } else { " " };
     let search_line = Line::from(vec![
         Span::styled(
             " [/] ",
@@ -73,7 +74,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     );
 
     // Separator
-    let sep_str: String = "\u{2500}".repeat(chunks[1].width as usize);
+    let sep_str: String = sym.horizontal_rule.repeat(chunks[1].width as usize);
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             sep_str,
@@ -112,7 +113,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 (pal.surface, pal.text_mid, pal.text_dim)
             };
 
-            let indicator = if is_selected { "\u{25b6}" } else { " " };
+            let indicator = if is_selected { sym.cursor } else { " " };
 
             lines.push(Line::from(vec![
                 Span::styled(
@@ -155,7 +156,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     );
 
     // Hint bar
-    let sep = Span::styled(" \u{00b7} ", Style::default().fg(pal.border_mid));
+    let sep = Span::styled(format!(" {} ", sym.separator), Style::default().fg(pal.border_mid));
     let hint_line = Line::from(vec![
         Span::styled(" jk", Style::default().fg(pal.text_mid)),
         Span::styled(" nav", Style::default().fg(pal.text_dim)),

@@ -18,7 +18,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     if let Some((ref msg, _)) = app.error {
         let line = Line::from(vec![
             Span::styled(
-                format!(" \u{26a0} {}", msg),
+                format!(" {} {}", app.symbols.warning, msg),
                 Style::default().fg(pal.warn),
             ),
             Span::raw("  "),
@@ -29,7 +29,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let sep = Span::styled(" \u{00b7} ", Style::default().fg(pal.border_mid));
+    let sym = &app.symbols;
+    let sep = Span::styled(format!(" {} ", sym.separator), Style::default().fg(pal.border_mid));
     let key_style = Style::default().fg(pal.text_mid);
     let desc_style = Style::default().fg(pal.text_dim);
 
@@ -71,7 +72,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled("type", key_style),
                 Span::styled(" to filter", desc_style),
                 sep.clone(),
-                Span::styled("\u{2191}\u{2193}", key_style),
+                Span::styled(sym.nav_arrows, key_style),
                 Span::styled(" navigate", desc_style),
                 sep.clone(),
                 Span::styled("enter", key_style),
@@ -94,7 +95,20 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         Mode::Bookmark => {
             vec![
                 Span::raw(" "),
-                Span::styled("\u{2691} BOOKMARK MODE", key_style),
+                Span::styled(format!("{} BOOKMARK MODE", sym.bookmark_icon), key_style),
+            ]
+        }
+        Mode::ThemePicker => {
+            vec![
+                Span::raw(" "),
+                Span::styled("hjkl/tab", key_style),
+                Span::styled(" navigate", desc_style),
+                sep.clone(),
+                Span::styled("enter", key_style),
+                Span::styled(" apply", desc_style),
+                sep.clone(),
+                Span::styled("esc", key_style),
+                Span::styled(" cancel", desc_style),
             ]
         }
     };

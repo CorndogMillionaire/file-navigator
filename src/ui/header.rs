@@ -10,19 +10,20 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let pal = &app.palette;
     let item_count = app.entries.len();
 
+    let sym = &app.symbols;
     let left = vec![
         Span::styled(
             " REM NAVIGATOR",
             Style::default().fg(pal.text_hot).add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" \u{00b7} ", Style::default().fg(pal.text_dim)),
+        Span::styled(format!(" {} ", sym.separator), Style::default().fg(pal.text_dim)),
         Span::styled("FILE SYSTEM", Style::default().fg(pal.text_mid)),
     ];
 
     let palette_label = app.palette_name().to_uppercase();
     let right_text = format!(
-        "ITEMS:{} \u{00b7} THEME:{} \u{00b7} SYS:NOMINAL ",
-        item_count, palette_label
+        "ITEMS:{} {} THEME:{} {} SYS:NOMINAL ",
+        item_count, sym.separator, palette_label, sym.separator
     );
     let right = vec![Span::styled(
         right_text,

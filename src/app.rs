@@ -6,9 +6,11 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 
+use crate::config;
 use crate::marks;
 use crate::nav;
 use crate::palette::{Palette, PALETTE_NAMES};
+use crate::symbols::{SymbolSet, SYMBOL_SET_NAMES};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Mode {
@@ -16,6 +18,13 @@ pub enum Mode {
     FuzzySearch,
     JumpKey,
     Bookmark,
+    ThemePicker,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ThemePickerFocus {
+    Colors,
+    Symbols,
 }
 
 pub struct FsEntry {
@@ -44,6 +53,8 @@ pub struct App {
     pub last_blink: Instant,
     pub palette: Palette,
     pub palette_index: usize,
+    pub symbols: SymbolSet,
+    pub symbols_index: usize,
     pub should_quit: bool,
     pub selected_path: Option<PathBuf>,
     pub show_hidden: bool,
@@ -58,6 +69,13 @@ pub struct App {
     pub bookmark_query: String,
     pub bookmark_cursor: usize,
     pub bookmark_filtered: Vec<char>,
+    // Theme picker state
+    pub theme_picker_focus: ThemePickerFocus,
+    pub theme_picker_color_cursor: usize,
+    pub theme_picker_symbol_cursor: usize,
+    // Saved state for cancel
+    theme_picker_prev_palette: usize,
+    theme_picker_prev_symbols: usize,
 }
 
 const JUMP_KEYS: &[(char, char)] = &[
@@ -76,7 +94,13 @@ const JUMP_KEYS: &[(char, char)] = &[
 ];
 
 impl App {
-    pub fn new(palette: Palette, palette_index: usize, start_dir: Option<PathBuf>) -> Self {
+    pub fn new(
+        palette: Palette,
+        palette_index: usize,
+        symbols: SymbolSet,
+        symbols_index: usize,
+        start_dir: Option<PathBuf>,
+    ) -> Self {
         let current_dir = start_dir
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
         let marks = marks::load_marks();
@@ -96,6 +120,8 @@ impl App {
             last_blink: Instant::now(),
             palette,
             palette_index,
+            symbols,
+            symbols_index,
             should_quit: false,
             selected_path: None,
             show_hidden: false,
@@ -108,6 +134,11 @@ impl App {
             bookmark_query: String::new(),
             bookmark_cursor: 0,
             bookmark_filtered: Vec::new(),
+            theme_picker_focus: ThemePickerFocus::Colors,
+            theme_picker_color_cursor: palette_index,
+            theme_picker_symbol_cursor: symbols_index,
+            theme_picker_prev_palette: palette_index,
+            theme_picker_prev_symbols: symbols_index,
         };
         app.refresh_entries();
         app
@@ -317,13 +348,29 @@ impl App {
         }
     }
 
-    pub fn cycle_palette(&mut self) {
-        self.palette_index = (self.palette_index + 1) % PALETTE_NAMES.len();
-        self.palette = Palette::from_name(PALETTE_NAMES[self.palette_index]);
-    }
-
     pub fn palette_name(&self) -> &str {
         PALETTE_NAMES[self.palette_index]
+    }
+
+    pub fn symbol_set_name(&self) -> &str {
+        SYMBOL_SET_NAMES[self.symbols_index]
+    }
+
+    fn open_theme_picker(&mut self) {
+        self.mode = Mode::ThemePicker;
+        self.theme_picker_focus = ThemePickerFocus::Colors;
+        self.theme_picker_color_cursor = self.palette_index;
+        self.theme_picker_symbol_cursor = self.symbols_index;
+        self.theme_picker_prev_palette = self.palette_index;
+        self.theme_picker_prev_symbols = self.symbols_index;
+    }
+
+    fn apply_theme_selection(&mut self) {
+        self.palette_index = self.theme_picker_color_cursor;
+        self.palette = Palette::from_name(PALETTE_NAMES[self.palette_index]);
+        self.symbols_index = self.theme_picker_symbol_cursor;
+        self.symbols = SymbolSet::from_name(SYMBOL_SET_NAMES[self.symbols_index]);
+        config::save_config(self.palette_name(), self.symbol_set_name());
     }
 
     // Bookmark helpers
@@ -385,6 +432,7 @@ impl App {
             Mode::FuzzySearch => self.handle_fuzzy_key(key),
             Mode::JumpKey => self.handle_jump_key(key),
             Mode::Bookmark => self.handle_bookmark_key(key),
+            Mode::ThemePicker => self.handle_theme_picker_key(key),
         }
     }
 
@@ -485,9 +533,9 @@ impl App {
             (KeyCode::Char('B'), _) => {
                 self.add_bookmark();
             }
-            // Theme cycling
+            // Theme picker
             (KeyCode::Char('t'), KeyModifiers::NONE) => {
-                self.cycle_palette();
+                self.open_theme_picker();
             }
             // Hidden files toggle
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
@@ -657,6 +705,71 @@ impl App {
                 self.bookmark_query.push(c);
                 self.bookmark_cursor = 0;
                 self.update_bookmark_filter();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_theme_picker_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                // Restore previous theme on cancel
+                self.palette_index = self.theme_picker_prev_palette;
+                self.palette = Palette::from_name(PALETTE_NAMES[self.palette_index]);
+                self.symbols_index = self.theme_picker_prev_symbols;
+                self.symbols = SymbolSet::from_name(SYMBOL_SET_NAMES[self.symbols_index]);
+                self.mode = Mode::Normal;
+            }
+            // Switch focus between tables
+            KeyCode::Tab | KeyCode::Char('h') | KeyCode::Char('l') | KeyCode::Left | KeyCode::Right => {
+                self.theme_picker_focus = match self.theme_picker_focus {
+                    ThemePickerFocus::Colors => ThemePickerFocus::Symbols,
+                    ThemePickerFocus::Symbols => ThemePickerFocus::Colors,
+                };
+            }
+            // Navigate within focused table
+            KeyCode::Char('j') | KeyCode::Down => {
+                match self.theme_picker_focus {
+                    ThemePickerFocus::Colors => {
+                        if self.theme_picker_color_cursor + 1 < PALETTE_NAMES.len() {
+                            self.theme_picker_color_cursor += 1;
+                        }
+                    }
+                    ThemePickerFocus::Symbols => {
+                        if self.theme_picker_symbol_cursor + 1 < SYMBOL_SET_NAMES.len() {
+                            self.theme_picker_symbol_cursor += 1;
+                        }
+                    }
+                }
+                // Live preview
+                self.palette_index = self.theme_picker_color_cursor;
+                self.palette = Palette::from_name(PALETTE_NAMES[self.palette_index]);
+                self.symbols_index = self.theme_picker_symbol_cursor;
+                self.symbols = SymbolSet::from_name(SYMBOL_SET_NAMES[self.symbols_index]);
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                match self.theme_picker_focus {
+                    ThemePickerFocus::Colors => {
+                        if self.theme_picker_color_cursor > 0 {
+                            self.theme_picker_color_cursor -= 1;
+                        }
+                    }
+                    ThemePickerFocus::Symbols => {
+                        if self.theme_picker_symbol_cursor > 0 {
+                            self.theme_picker_symbol_cursor -= 1;
+                        }
+                    }
+                }
+                // Live preview
+                self.palette_index = self.theme_picker_color_cursor;
+                self.palette = Palette::from_name(PALETTE_NAMES[self.palette_index]);
+                self.symbols_index = self.theme_picker_symbol_cursor;
+                self.symbols = SymbolSet::from_name(SYMBOL_SET_NAMES[self.symbols_index]);
+            }
+            // Confirm selection
+            KeyCode::Enter => {
+                self.apply_theme_selection();
+                self.mode = Mode::Normal;
             }
             _ => {}
         }

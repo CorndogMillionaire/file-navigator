@@ -51,7 +51,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         let display_name = if entry.name.len() > (inner.width as usize).saturating_sub(9) {
             let max = (inner.width as usize).saturating_sub(10);
             let truncated: String = entry.name.chars().take(max).collect();
-            format!("{}\u{2026}", truncated)
+            format!("{}{}", truncated, app.symbols.ellipsis)
         } else {
             entry.name.clone()
         };
@@ -70,7 +70,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
             entry
                 .size
                 .map(nav::format_size)
-                .unwrap_or_else(|| "\u{2014}".to_string()),
+                .unwrap_or_else(|| app.symbols.em_dash.to_string()),
         ));
         if let Some(ref perms) = entry.permissions {
             lines.push(kv("PERMS", perms.clone()));

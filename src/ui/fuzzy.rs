@@ -24,7 +24,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let right_text = format!("[{}/{} matches]", match_count, pool_total);
     let right_len = right_text.len();
 
-    let cursor_char = if app.blink_on { "\u{258b}" } else { " " };
+    let cursor_char = if app.blink_on { app.symbols.blink_char } else { " " };
 
     let mut spans = vec![
         Span::styled(
