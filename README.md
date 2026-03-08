@@ -5,7 +5,7 @@ A minimal, retro sci-fi file navigator for the terminal. Built with Rust, `ratat
 REM does one thing: navigate a file tree and emit a path. The aesthetic is inspired by late-70s/early-80s sci-fi — phosphor CRTs, corporate bureaucracy, degraded signal. Think *Alien* (1979).
 
 ```
- USCSS NOSTROMO  ·  FILE SYSTEM              DISK:74%  ·  ITEMS:1847  ·  SYS:NOMINAL
+ REM NAVIGATOR  ·  FILE SYSTEM              ITEMS:1847  ·  THEME:PHOSPHOR  ·  SYS:NOMINAL
  /home / projects / rem / ▋
  [a]  ▣  src/                                  DIR      —
  [s]  ▣  target/                               DIR      —

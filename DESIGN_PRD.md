@@ -72,7 +72,7 @@ border_dim: Rgb(0, 26, 8), border_mid: Rgb(0, 61, 16), border_hot: Rgb(0, 122, 3
 warn: Rgb(255, 68, 68)
 ```
 
-**Amber Corporate** — *The executive terminal. Weyland-Yutani ops. Every access is logged.*
+**Amber Corporate** — *The executive terminal. Colonial resource ops. Every access is logged.*
 ```rust
 bg: Rgb(12, 8, 0), surface: Rgb(17, 10, 0),
 text_dim: Rgb(90, 58, 0), text_mid: Rgb(196, 122, 0), text_hot: Rgb(255, 176, 0),
