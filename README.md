@@ -108,4 +108,5 @@ Cycle through themes with `t` during navigation.
 
 ## License
 
-MIT
+GPL3
+https://www.gnu.org/licenses/gpl-3.0.en.html
